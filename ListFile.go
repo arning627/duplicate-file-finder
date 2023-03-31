@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
@@ -10,17 +11,26 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 var (
-	res = make(map[string][]string)
+	wd, _ = os.Getwd()
+	res   = make(map[string][]string)
+	wg    sync.WaitGroup
 )
+
+type filePojo struct {
+	hash string
+	path string
+}
 
 func ListFile(root string, list *[]string) {
 	rootDir, e := ioutil.ReadDir(root)
 	if e != nil {
 		log.Fatalln(e)
 	}
+
 	var builder strings.Builder
 	for _, file := range rootDir {
 		if file.IsDir() && file.Name() != root {
@@ -35,7 +45,8 @@ func ListFile(root string, list *[]string) {
 	}
 }
 
-func calFileMD5(path string) string {
+func calFileMD5(path string, ch chan<- filePojo) {
+	defer wg.Done()
 	file, err := os.Open(path)
 	if err != nil {
 		log.Fatal(err)
@@ -44,54 +55,60 @@ func calFileMD5(path string) string {
 	md5 := md5.New()
 	io.Copy(md5, file)
 	md5InBytes := md5.Sum(nil)[:16]
-	return hex.EncodeToString(md5InBytes)
+	hash := hex.EncodeToString(md5InBytes)
+	obj := filePojo{hash, path}
+	ch <- obj
+	// return hash
 }
 
 func main() {
 
-	// root := "/Users/arning/arduino"
+	fileHash := make(chan filePojo, 5)
 	files := make([]string, 0, 5)
 	root := "/Users/arning/develop/code/my/golang/clamav-proxy"
 	ListFile(root, &files)
 
+	l := len(files)
+
+	fmt.Printf("There are %v files in the current directory\n", l)
+	wg.Add(l)
 	for _, v := range files {
-		md5 := calFileMD5(v)
-		if file, ok := res[md5]; ok {
-			file = append(file, v)
-			res[md5] = file
-		} else {
-			res[md5] = []string{v}
-		}
-		// fmt.Printf("md5: %v\n", md5)
+		go calFileMD5(v, fileHash)
 	}
+
+	go func() {
+		for {
+			hash := <-fileHash
+			if file, ok := res[hash.hash]; ok {
+				file = append(file, hash.path)
+				res[hash.hash] = file
+			} else {
+				res[hash.hash] = []string{hash.path}
+			}
+		}
+	}()
+
+	f, _ := filepath.Abs("duplicate.txt")
+
+	ff, err := os.OpenFile(f, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0755)
+	if err != nil {
+		fmt.Printf("err: %v\n", err)
+	}
+	defer ff.Close()
+
+	writer := bufio.NewWriter(ff)
+
+	wg.Wait()
 
 	for _, v := range res {
 		if len(v) > 1 {
 			for _, v2 := range v {
-				fmt.Printf("v2: %v\n", v2)
+				writer.WriteString(v2 + "\n")
 			}
-			fmt.Println("---------------")
+			writer.WriteString("-------------------\n")
+			writer.Flush()
 		}
+
 	}
-
-	// list := []string{"sss", "aaa", "ccc", "bbb", "ddd", "bbb"}
-
-	// for _, v := range list {
-	// 	md5 := hex.EncodeToString(md5.New().Sum([]byte(v))[:16])
-	// 	if e, ok := res[md5]; ok {
-	// 		e = append(e, v)
-	// 		res[md5] = e
-	// 	} else {
-	// 		// re := make([]string, 0)
-	// 		// re = append(re, v)
-	// 		res[md5] = []string{v}
-	// 	}
-	// }
-	// // if v, ok := res["b"]; ok {
-	// // 	fmt.Println("into ")
-	// // 	v = append(v, "^^^^^")
-	// // 	res["b"] = v
-	// // }
-	// fmt.Printf("res: %v\n", res)
 
 }
