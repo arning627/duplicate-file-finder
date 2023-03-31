@@ -8,8 +8,10 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -47,7 +49,6 @@ func ListFile(root string, list *[]string) {
 }
 
 func calFileMD5(path string, ch chan<- filePojo) {
-	defer wg.Done()
 	file, err := os.Open(path)
 	if err != nil {
 		log.Fatal(err)
@@ -63,6 +64,10 @@ func calFileMD5(path string, ch chan<- filePojo) {
 }
 
 func main() {
+	cpu := runtime.NumCPU()
+	runtime.GOMAXPROCS(cpu)
+	log.Println("========start scan==========")
+	log.Printf("CPU = %v", cpu)
 	start_t := time.Now()
 	fileHash := make(chan filePojo, 5)
 	files := make([]string, 0, 5)
@@ -71,17 +76,31 @@ func main() {
 
 	l := len(files)
 
-	fmt.Printf("There are %v files in the current directory\n", l)
-	wg.Add(l)
+	log.Printf("There are %v files in the current directory\n", l)
+	wg.Add(cpu)
 	// for _, v := range files {
 	// 	go calFileMD5(v, fileHash)
 	// }
-
-	go func() {
-		for _, v := range files {
-			calFileMD5(v, fileHash)
+	step := int(math.Ceil(float64(l / cpu)))
+	for i := 0; i < cpu; i++ {
+		index := step * i
+		endIndex := index + step
+		if i == cpu-1 {
+			endIndex = l
 		}
-	}()
+		go func() {
+			defer wg.Done()
+			for i := index; i < endIndex; i++ {
+				calFileMD5(files[i], fileHash)
+			}
+		}()
+	}
+
+	// go func() {
+	// 	for _, v := range files {
+	// 		calFileMD5(v, fileHash)
+	// 	}
+	// }()
 
 	go func() {
 		for {
@@ -119,6 +138,6 @@ func main() {
 	}
 	end_t := time.Now()
 	sub_t := end_t.Sub(start_t)
-	fmt.Printf("total time : %v\n", sub_t)
+	log.Printf("total time : %v\n", sub_t)
 
 }
