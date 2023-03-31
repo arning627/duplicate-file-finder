@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 var (
@@ -62,7 +63,7 @@ func calFileMD5(path string, ch chan<- filePojo) {
 }
 
 func main() {
-
+	start_t := time.Now()
 	fileHash := make(chan filePojo, 5)
 	files := make([]string, 0, 5)
 	var root = wd
@@ -72,9 +73,15 @@ func main() {
 
 	fmt.Printf("There are %v files in the current directory\n", l)
 	wg.Add(l)
-	for _, v := range files {
-		go calFileMD5(v, fileHash)
-	}
+	// for _, v := range files {
+	// 	go calFileMD5(v, fileHash)
+	// }
+
+	go func() {
+		for _, v := range files {
+			calFileMD5(v, fileHash)
+		}
+	}()
 
 	go func() {
 		for {
@@ -110,5 +117,8 @@ func main() {
 		}
 
 	}
+	end_t := time.Now()
+	sub_t := end_t.Sub(start_t)
+	fmt.Printf("total time : %v\n", sub_t)
 
 }
