@@ -65,7 +65,7 @@ func main() {
 
 	fileHash := make(chan filePojo, 5)
 	files := make([]string, 0, 5)
-	root := "/Users/arning/develop/code/my/golang/clamav-proxy"
+	var root = wd
 	ListFile(root, &files)
 
 	l := len(files)
